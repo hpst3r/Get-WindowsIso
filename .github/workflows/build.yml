@@ -10,7 +10,7 @@ jobs:
       matrix:
         include:
           - name: 23H2
-          - name: 24H2
+           # - name: 24H2
     runs-on: windows-2022
     steps:
       - name: Checkout
