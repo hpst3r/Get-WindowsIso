@@ -9,8 +9,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: windows-11
-          - name: windows-2022
+          - name: 23H2
+          - name: 24H2
     runs-on: windows-2022
     steps:
       - name: Checkout
