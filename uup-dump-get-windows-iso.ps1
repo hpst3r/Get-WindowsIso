@@ -149,11 +149,36 @@ trap {
 .SYNOPSIS
 Wrapper to convert a hashtable of parameters to a url encoded string.
 #>
-function New-QueryString([hashtable]$Parameters) {
+function New-QueryString {
+  param (
+    [Parameter(Mandatory=$true)]
+    [hashtable]$Parameters,
+    [Parameter()]
+    [int]$Attempts = 0
+  )
+
+  try {
 
     @($Parameters.GetEnumerator() | ForEach-Object {
-        "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.value))"
+      "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.value))"
     }) -join '&'
+
+  } catch {
+
+    # if fn failed to find type, add the System.Web type and try again once
+    if ($Attempts -lt 1 -and ($_.Exception.Message -eq 'Unable to find type [System.Web.HttpUtility].')) {
+
+      Write-Warning "New-QueryString: Failed to find System.Web.HttpUtility: Attempting to add type and try again."
+      Add-Type -AssemblyName System.Web
+      
+      New-QueryString -Parameters $Parameters -Attempts ($Attempts++)
+
+    } else {
+
+      throw "New-QueryString: Failed: $($_)"
+
+    }
+  }
 
 }
 
@@ -430,7 +455,15 @@ function Get-IsoWindowsImages($IsoPath) {
 
 }
 
-function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
+function Get-WindowsIso {
+  param (
+    [Parameter(Mandatory=$true)]
+    [string]$Name,
+    [Parameter(Mandatory=$true)]
+    [hashtable]$Target,
+    [Parameter()]
+    [System.Object]$Path
+  )
 
   $Iso = Get-UupDumpIso -Name $Name -Target $Target
 
@@ -539,8 +572,7 @@ function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
 
 }
 
-Start-Transcript `
-  -Path "job-$(Get-Date -UFormat %s).log"
+Start-Transcript -Path "job-$(Get-Date -UFormat %s).log"
 
 Write-Host "uup-dump-get-windows-iso: Beginning execution: version $(git rev-parse --short HEAD) at $(Get-Date -UFormat %s)."
 
