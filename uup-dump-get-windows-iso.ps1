@@ -5,8 +5,8 @@
 Creates a Windows ISO with uupdump.
 
 .INPUTS
-[string]$Target:
-  The target build of Windows - for example,
+[string]$Version:
+  The target build/edition of Windows - for example,
   "Windows 11 Professional, version 24H2" for Windows 11 Pro, version 24H2, or
   "Windows Server 2025 Datacenter (Core)" for Windows Server 2025 Datacenter Core.
 
@@ -39,9 +39,9 @@ Windows ISO
 param(
     # The target build of Windows, e.g. 24H2 or 2025
     [Parameter(Mandatory = $true)]
-    [string]$Target,
+    [string]$Version,
     # The name of the child directory to use for the uupdump build job
-    [Parameter]
+    [Parameter()]
     [string]$Path='output'
 )
 
@@ -62,7 +62,7 @@ trap {
 }
 
 # the OS build targets available as options for the $Target parameter.
-$TARGETS = @{
+[hashtable]$TARGETS = @{
   # TODO: add All Editions W11 options
   'Windows 11 Professional, version 23H2' = @{
     Search = 'Windows 11, version 23H2'
@@ -135,7 +135,7 @@ Wrapper to convert a hashtable of parameters to a url encoded string.
 function New-QueryString([hashtable]$Parameters) {
 
     @($Parameters.GetEnumerator() | ForEach-Object {
-        "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.Value))"
+        "$($_.Key)=$([System.Web.HttpUtility]::UrlEncode($_.value))"
     }) -join '&'
 
 }
@@ -151,30 +151,44 @@ Name: [string]
 Body: [hashtable]
   GET request body
 #>
-function Invoke-UupDumpApi([string]$Name, [hashtable]$Body) {
+function Invoke-UupDumpApi {
+  param (
+    [Parameter(Mandatory=$true)]
+    [string]$Name,
+    [Parameter(Mandatory=$true)]
+    [hashtable]$Body
+  )
 
   for ($n = 0; $n -lt 15; ++$n) {
 
     if ($n) {
 
-      Write-Host "Waiting 10s before retrying the uup-dump api $($Name) request #$($n)"
+      Write-Host "Waiting 10s before retrying the UUP dump api $($Name) request, attempt $($n)"
+
       Start-Sleep -Seconds 10
-      Write-Host "Retrying the uup-dump api $($Name) request #$($n)"
+
+      Write-Host "Retrying the uup-dump api $($Name) request, attempt $($n)"
 
     }
 
     try {
 
+      $Uri = "https://api.uupdump.net/$($Name).php"
+
+      Write-Host "Making API request $($Uri) with query: $(New-QueryString -Parameters $Body)"
+
       $Response = Invoke-RestMethod `
         -Method Get `
-        -Uri "https://api.uupdump.net/$($Name).php" `
+        -Uri $Uri `
         -Body $Body
-
+      
       return $Response
 
     } catch {
 
-      Write-Warning "Failed the uup-dump api $($Name) request: $($_)"
+      $Failure = $_
+
+      Write-Warning "Failed the uup-dump api $($Name) request: $($Failure)"
 
     }
 
@@ -184,55 +198,62 @@ function Invoke-UupDumpApi([string]$Name, [hashtable]$Body) {
 
 }
 
-function Get-UupDumpIso($Name, $Target) {
+function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
-  Write-Host "Getting the $($Name) metadata"
-  $Result = Invoke-UupDumpApi listId @{ Search = $Target.Search }
+  Write-Host "Getting metadata for $($Name)."
 
-  $Result.Response.Builds.PSObject.Properties `
+  Write-Host "Search: $($Target.Search)"
+  
+  $Result = Invoke-UupDumpApi -Name 'listid' -Body @{ 'search' = $Target.Search }
+
+  $Result.Response.builds.PSObject.Properties `
     | ForEach-Object {
-      $Id = $_.Value.uuid
+      $Id = $_.value.uuid
       Write-Host "Processing $($Name) $($Id)"
       $_
     } `
     | Where-Object {
-      $Result = $Target.Search -like '*preview*' -or $_.Value.Title -notlike '*preview*'
+      $Result = $Target.Search -like '*preview*' -or $_.value.title -notlike '*preview*'
       if (!$Result) {
         Write-Host "Skipping. Expected preview=false. Got preview=true."
       }
       $Result
     } `
     | ForEach-Object {
-      $Id = $_.Value.uuid
+      $Id = $_.value.uuid
       Write-Host "Getting $($Name) $($Id) language metadata"
-      $Result = Invoke-UupDumpApi listLangs @{ Id = $Id }
+      $Result = Invoke-UupDumpApi listlangs @{ id = $Id }
+      Write-Host "Got $($Name) $($Id) language metadata"
 
-      if ($Result.Response.updateInfo.Build -ne $_.Value.Build) {
-        throw 'Unexpected Build mismatch in listLangs'
+      Write-Host $Result.Response
+
+      if ($Result.Response.updateinfo.build -ne $_.value.build) {
+        throw 'Unexpected build mismatch in listlangs'
       }
+      Write-Host "No build mismatch in $($Name) $($Id) language metadata"
 
-      $_.Value | Add-Member -NotePropertyMembers @{
-        Langs = $Result.Response.langFancyNames
+      $_.value | Add-Member -NotePropertyMembers @{
+        langs = $Result.Response.langFancyNames
         info = $Result.Response.updateInfo
       }
 
-      $Langs = $_.Value.Langs.PSObject.Properties.Name
-      $Editions = if ($Langs -contains 'en-us') {
-        Write-Host "Getting the $($Name) $($Id) Editions metadata"
-        $Result = Invoke-UupDumpApi listEditions @{ Id = $Id; lang = 'en-us' }
-        $Result.Response.EditionFancyNames
+      $Langs = $_.value.langs.PSObject.Properties.Name
+      $Editions = if ($langs -contains 'en-us') {
+        Write-Host "Getting the $($Name) $($Id) editions metadata"
+        $Result = Invoke-UupDumpApi listeditions @{ id = $Id; lang = 'en-us' }
+        $Result.Response.editionFancyNames
       } else {
         Write-Host "Skipping. Missing en-us language."
         [PSCustomObject]@{}
       }
 
-      $_.Value | Add-Member -NotePropertyMembers @{ Editions = $Editions }
+      $_.value | Add-Member -NotePropertyMembers @{ editions = $Editions }
       $_
   } `
   | Where-Object {
-    $Ring = $_.Value.info.Ring
-    $Langs = $_.Value.Langs.PSObject.Properties.Name
-    $Editions = $_.Value.Editions.PSObject.Properties.Name
+    $Ring = $_.value.info.Ring
+    $Langs = $_.value.langs.PSObject.Properties.Name
+    $Editions = $_.value.editions.PSObject.Properties.Name
     $ExpectedRing = 'RETAIL' # TODO: add support for Dev channel 25H2
 
     ($Ring -eq $ExpectedRing) -and
@@ -241,22 +262,29 @@ function Get-UupDumpIso($Name, $Target) {
   } `
   | Select-Object -First 1 `
   | ForEach-Object {
-    $Id = $_.Value.uuid
+    $Id = $_.value.uuid
     [PSCustomObject]@{
       Name = $Name
-      Title = $_.Value.Title
-      Build = $_.Value.Build
+      Title = $_.value.Title
+      Build = $_.value.Build
       Id = $Id
       Edition = $Target.Edition
-      VirtualEdition = $null
+      VirtualEdition = $null # TODO: this probably needs to inherit from $Target
+      # build API requests for requested version
       ApiUrl = 'https://api.uupdump.net/get.php?' + (New-QueryString @{
-        Id = $Id; lang = 'en-us'; Edition = $Target.Edition
+        'id' = $Id
+        'lang' = 'en-us'
+        'edition' = $Target.Edition
       })
       DownloadUrl = 'https://uupdump.net/download.php?' + (New-QueryString @{
-        Id = $Id; Pack = 'en-us'; Edition = $Target.Edition
+        'id' = $Id
+        'pack' = 'en-us'
+        'edition' = $Target.Edition
       })
       DownloadPackageUrl = 'https://uupdump.net/get.php?' + (New-QueryString @{
-        Id = $Id; Pack = 'en-us'; Edition = $Target.Edition
+        'id' = $Id
+        'pack' = 'en-us'
+        'edition' = $Target.Edition
       })
     }
   }
@@ -273,13 +301,13 @@ function Get-IsoWindowsImages($IsoPath) {
   try {
 
     $IsoVolume = $IsoImage | Get-Volume
-    $installPath = "$($IsoVolume.DriveLetter):\sources\install.wim"
+    $InstallPath = "$($IsoVolume.DriveLetter):\sources\install.wim"
 
-    Write-Host "Getting Windows images from $installPath"
+    Write-Host "Getting Windows images from $($InstallPath)"
 
-    Get-WindowsImage -ImagePath $installPath | ForEach-Object {
+    Get-WindowsImage -ImagePath $InstallPath | ForEach-Object {
 
-      $Image = Get-WindowsImage -ImagePath $installPath -Index $_.ImageIndex
+      $Image = Get-WindowsImage -ImagePath $InstallPath -Index $_.ImageIndex
 
       [PSCustomObject]@{
         Index = $Image.ImageIndex
@@ -298,15 +326,18 @@ function Get-IsoWindowsImages($IsoPath) {
 
 }
 
-function Get-WindowsIso($Name, $Path) {
+function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
 
-  $Iso = Get-UupDumpIso $Name $TARGETS.$Name
+  $Iso = Get-UupDumpIso -Name $Name -Target $Target
+
+  $Iso | Format-List
 
   if ($Iso.Build -notmatch '^\d+\.\d+$') {
-    throw "unexpected $($Name) Build: $($Iso.Build)"
+    throw "unexpected $($Name) build: $($Iso.Build)"
   }
 
-  $BuildDirectory = (Join-Path -Path $Path -ChildPath $Name)
+  # Create the build directory. Cannot have spaces in the PATH, so strip them from the Name.
+  $BuildDirectory = (Join-Path -Path $Path -ChildPath ($Name -replace '\s',''))
   $DestinationIsoPath = "$($BuildDirectory).Iso"
   $DestinationIsoMetadataPath = "$($DestinationIsoPath).json"
   $DestinationIsoChecksumPath = "$($DestinationIsoPath).sha256.txt"
@@ -337,7 +368,7 @@ function Get-WindowsIso($Name, $Path) {
     -Path "$BuildDirectory.zip" `
     -DestinationPath $BuildDirectory
 
-  $convertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
+  $ConvertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
     -replace '^(AutoExit\s*)=.*','$1=1' `
     -replace '^(Cleanup\s*)=.*','$1=1' `
     -replace '^(NetFx3\s*)=.*','$1=1' `
@@ -347,7 +378,7 @@ function Get-WindowsIso($Name, $Path) {
   Set-Content `
     -Encoding ascii `
     -Path (Join-Path -Path $BuildDirectory -ChildPath ConvertConfig.ini) `
-    -Value $convertConfig
+    -Value $ConvertConfig
 
   Write-Host "Creating ISO for $($Title)"
 
@@ -364,11 +395,11 @@ function Get-WindowsIso($Name, $Path) {
   $SourceIsoPath = Resolve-Path $BuildDirectory/*.Iso
 
   $IsoChecksum = (Get-FileHash -Algorithm SHA256 $SourceIsoPath).Hash.ToLowerInvariant()
-  Set-Content -Encoding ascii -NoNewline -Path $DestinationIsoChecksumPath -Value $IsoChecksum
+  Set-Content -Encoding ascii -NoNewline -Path $DestinationIsoChecksumPath -value $IsoChecksum
 
   $windowsImages = Get-IsoWindowsImages $SourceIsoPath
 
-  Set-Content -Path $DestinationIsoMetadataPath -Value (
+  Set-Content -Path $DestinationIsoMetadataPath -value (
     ([PSCustomObject]@{
       Name = $Name
       Title = $Iso.Title
@@ -394,6 +425,6 @@ function Get-WindowsIso($Name, $Path) {
 Start-Transcript `
   -Path "job-$(Get-Date -UFormat %s).log"
 
-Get-WindowsIso $Target $Path
+Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path
 
 Stop-Transcript
