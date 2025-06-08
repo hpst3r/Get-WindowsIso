@@ -6,7 +6,7 @@ Creates a Windows ISO with uupdump.
 
 .INPUTS
 [string]$Version:
-  The target build/edition of Windows - for example,
+  The target build/Editions of Windows - for example,
   "Windows 11 Professional, version 24H2" for Windows 11 Pro, version 24H2, or
   "Windows Server 2025 Datacenter (Core)" for Windows Server 2025 Datacenter Core.
 
@@ -65,79 +65,83 @@ trap {
 
 # the OS build targets available as options for the $Target parameter.
 [hashtable]$TARGETS = @{
-  # TODO: VirtualEdition is not currently being used for anything, Enterprise won't work
+  # TODO: VirtualEditions is not currently being used for anything, Enterprise won't work
   'Windows 11, version 23H2' = @{
     Search = 'Windows 11, version 23H2'
-    Edition = 'core;professional'
+    Editions = @('core','professional')
   }
   'Windows 11 Professional, version 23H2' = @{
-    Search  = 'Windows 11, version 23H2'
-    Edition = 'Professional'
+    Search = 'Windows 11, version 23H2'
+    Editions = @('professional')
   }
   'Windows 11 Enterprise, version 23H2' = @{
-    Search  = 'Windows 11, version 23H2'
-    Edition = 'Professional'
-    VirtualEdition = 'Enterprise'
+    Search = 'Windows 11, version 23H2'
+    Editions = @('professional')
+    VirtualEditions = @('enterprise')
+  }
+  'Windows 11, version 24H2' = @{
+    Search = 'Windows 11, version 24H2'
+    Editions = @('core','professional')
   }
   'Windows 11 Professional, version 24H2' = @{
     Search  = 'Windows 11, version 24H2'
-    Edition = 'Professional'
+    Editions = @('professional')
   }
   'Windows 11 Enterprise, version 24H2' = @{
     Search  = 'Windows 11, version 24H2'
-    Edition = 'Professional'
-    VirtualEdition = 'Enterprise'
+    Editions = @('professional')
+    VirtualEditions = @('enterprise')
   }
   'Windows 11 Professional, Preview 26200' = @{
-    Search  = 'Windows 11 Insider Preview 10.0.26200'
-    Edition = 'Professional'
-    Ring    = 'DEV'
+    Search = 'Windows 11 Insider Preview 10.0.26200'
+    Editions = @('professional')
+    Ring = 'DEV'
   }
   'Windows 11 Enterprise, Preview 26200' = @{
-    Search  = 'Windows 11 Insider Preview 10.0.26200'
-    Edition = 'Professional'
-    VirtualEdition = 'Enterprise'
-    Ring    = 'DEV'
+    Search = 'Windows 11 Insider Preview 10.0.26200'
+    Editions = @('professional')
+    VirtualEditions = @('enterprise')
+    Ring = 'DEV'
   }
   'Windows Server 2025' = @{
-    Search  = 'Windows Server 2025'
-    Edition = 'serverdatacenter;serverdatacentercore;serverturbine;serverturbinecore;serverstandard;serverstandardcore'
+    Search = 'Windows Server 2025'
+    Editions = @('serverdatacenter','serverdatacentercore','serverstandard','serverstandardcore')
   }
   'Windows Server 2025 Datacenter' = @{
-    Search  = 'Windows Server 2025'
-    Edition = 'serverdatacenter'
+    Search = 'Windows Server 2025'
+    Editions = @('serverdatacenter')
   }
   'Windows Server 2025 Datacenter (Core)' = @{
-    Search  = 'Windows Server 2025'
-    Edition = 'serverdatacentercore'
+    Search = 'Windows Server 2025'
+    Editions = @('serverdatacentercore')
   }
   'Windows Server 2025 Standard' = @{
-    Search  = 'Windows Server 2025'
-    Edition = 'serverstandard'
+    Search = 'Windows Server 2025'
+    Editions = @('serverstandard')
   }
   'Windows Server 2025 Standard (Core)' = @{
-    Search  = 'Windows Server 2025'
-    Edition = 'serverstandardcore'
+    Search = 'Windows Server 2025'
+    Editions = @('serverstandardcore')
   }
   'Windows Server 2022' = @{
-    Search  = 'Microsoft server operating system, version 21H2'
-    Edition = 'serverdatacenter;serverdatacentercore;serverturbine;serverturbinecore;serverstandard;serverstandardcore'
+    Search = 'Microsoft server operating system, version 21H2'
+    Editions = @('serverdatacenter','serverdatacentercore','serverstandard','serverstandardcore')
   }
   'Windows Server 2022 Datacenter' = @{
-    Search  = 'Microsoft server operating system, version 21H2'
-    Edition = 'serverdatacenter'
+    Search = 'Microsoft server operating system, version 21H2'
+    Editions = @('serverdatacenter')
   }
   'Windows Server 2022 Datacenter (Core)' = @{
-    Search  = 'Microsoft server operating system, version 21H2'
-    Edition = 'serverdatacentercore'
+    Search = 'Microsoft server operating system, version 21H2'
+    Editions = @('serverdatacentercore')
   }
   'Windows Server 2022 Standard' = @{
-    Search  = 'Microsoft server operating system, version 21H2'
-    Edition = 'serverstandard'
+    Search = 'Microsoft server operating system, version 21H2'
+    Editions = @('serverstandard')
   }
   'Windows Server 2022 Standard (Core)' = @{
-    Search  = 'Microsoft server operating system, version 21H2'
-    Edition = 'serverstandardcore'
+    Search = 'Microsoft server operating system, version 21H2'
+    Editions = @('serverstandardcore')
   }
 }
 
@@ -219,6 +223,10 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
   
   $Result = Invoke-UupDumpApi -Name 'listid' -Body @{ 'search' = $Target.Search }
 
+  Write-Verbose "Get-UupDumpIso: listid query response:"
+  Write-Verbose ($Result | ConvertTo-Json -Depth 99)
+  Write-Verbose "`n"
+
   $Result.Response.builds.PSObject.Properties `
     | ForEach-Object {
       $Id = $_.value.uuid
@@ -239,7 +247,7 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
       $Result
 
     } `
-    | ForEach-Object { # get lang and edition metadata
+    | ForEach-Object { # get lang and Editions metadata
 
       Write-Verbose "Get-UupDumpIso: Current metadata:"
       Write-Verbose ($_.value | ConvertTo-Json -Depth 99) # pretty format as json
@@ -275,13 +283,17 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
       $Langs = $_.value.langs.PSObject.Properties.Name
 
-      # get edition metadata
+      # get Editions metadata
 
-      $Editions = if ($langs -contains 'en-us') {
+      $editions = if ($langs -contains 'en-us') {
 
         Write-Host "Get-UupDumpIso: Getting $($Name) (ID: $($Id)) editions metadata.`n"
 
         $Result = Invoke-UupDumpApi -Name listeditions -Body @{ id = $Id; lang = 'en-us' }
+
+        Write-Verbose "Get-UupDumpIso: Editions retrieved for $($Name) $($Id):"
+        Write-Verbose ($Result.Response | ConvertTo-Json -Depth 99)
+        Write-Verbose "`n"
 
         $Result.Response.editionFancyNames
 
@@ -294,10 +306,10 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
       }
 
       Write-Verbose "Get-UupDumpIso: Retrieved editions:"
-      Write-Verbose ($Editions | ConvertTo-Json -Depth 99)
+      Write-Verbose ($editions | ConvertTo-Json -Depth 99)
       Write-Verbose "`n"
 
-      $_.value | Add-Member -NotePropertyMembers @{ editions = $Editions }
+      $_.value | Add-Member -NotePropertyMembers @{ editions = $editions }
       
       $_
 
@@ -308,27 +320,38 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
     $Ring = $_.value.info.Ring
     $Langs = $_.value.langs.PSObject.Properties.Name
-    $Editions = $_.value.editions.PSObject.Properties.Name
+
+    # convert both passed and retrieved edition names to lowercase for comparison
+    $LowercaseEditions = ($_.value.editions.PSObject.Properties.Name | ForEach-Object { $_.ToLowerInvariant() })
+    $LowercaseTargetEditions = ($Target.Editions | ForEach-Object { $_.ToLowerInvariant() })
 
     # use $Target.PSObject.Properties['Ring'] rather than $Target.Ring
     # to check existence so it does not throw an error
     $ExpectedRing = if ($Target.PSObject.Properties['Ring']) { $Target.Ring } else { 'RETAIL' }
 
+    # evaluate image properties, determine if they match, log the match
+    # then evaluate the Where-Object with them below
+    $RingMatches = ($Ring -eq $ExpectedRing)
+    $LangIncluded = ($Langs -contains 'en-us')
+    $EditionsIncluded = ($LowercaseTargetEditions | ForEach-Object { $LowercaseEditions -contains $_ })
+
     Write-Host @"
 Image ring: $($Ring)
 Expected ring: $($ExpectedRing)
+Match? $($RingMatches)
 
 Image langs: $($Langs)
 Desired lang: $('en-us')
+Match? $($LangIncluded)
 
-Image edition(s): $($Editions)
-Target edition(s): $($Target.Edition)
+Image Editions(s): $($LowercaseEditions)
+Target Editions(s): $($LowercaseTargetEditions)
+Match? $($EditionsIncluded)
 
 "@
 
-    ($Ring -eq $ExpectedRing) -and
-    ($Langs -contains 'en-us') -and # TODO: remove hardcoded en-us lang
-    ($Editions -contains $Target.Edition)
+    # this is the actual filter for Where-Object that controls what is passed to Select-Object below
+    ($RingMatches -and $LangIncluded -and $EditionsIncluded)
 
     Write-Host "Get-UupDumpIso: Ring, langs, and editions are OK! Continuing.`n"
 
@@ -338,7 +361,7 @@ Target edition(s): $($Target.Edition)
 
     # these variables will be used in ApiUris below
     $Id = $_.value.uuid
-    $Edition = $Target.Edition
+    $Editions = $Target.Editions
 
     Write-Host "Get-UupDumpIso: OK! Returning final ISO parameters.`n"
     
@@ -348,23 +371,23 @@ Target edition(s): $($Target.Edition)
       Title = $_.value.title
       Build = $_.value.build
       Id = $Id
-      Edition = $Target.Edition
-      VirtualEdition = if ($Target.PSObject.Properties['VirtualEdition']) { $Target.VirtualEdition } else { $null }
+      Editions = $Target.Editions
+      VirtualEditions = if ($Target.PSObject.Properties['VirtualEditions']) { $Target.VirtualEditions } else { $null }
       # compose queries for requested version
       ApiUri = 'https://api.uupdump.net/get.php?' + (New-QueryString @{
         'id' = $Id
         'lang' = 'en-us'
-        'edition' = $Edition
+        'edition' = ($Editions -join ';')
       })
       DownloadUri = 'https://uupdump.net/download.php?' + (New-QueryString @{
         'id' = $Id
         'pack' = 'en-us'
-        'edition' = $Edition
+        'edition' = ($Editions -join ';')
       })
       DownloadPackageUri = 'https://uupdump.net/get.php?' + (New-QueryString @{
         'id' = $Id
         'pack' = 'en-us'
-        'edition' = $Edition
+        'edition' = ($Editions -join ';')
       })
     } 
   }
@@ -412,9 +435,9 @@ function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
   $Iso = Get-UupDumpIso -Name $Name -Target $Target
 
   # log iso parameters to console
-  Write-Host 'Get-WindowsIso: Get-UupDumpIso returned object:'
-  Write-Host ($Iso | ConvertTo-Json -Depth 99) # pretty format as json
-  Write-Host
+  Write-Verbose 'Get-WindowsIso: Get-UupDumpIso returned object:'
+  Write-Verbose ($Iso | ConvertTo-Json -Depth 99) # pretty format as json
+  Write-Verbose "`n"
 
   if ($Iso.Build -notmatch '^\d+\.\d+$') {
     throw "Get-WindowsIso: unexpected $($Name) build: $($Iso.Build)"
@@ -433,13 +456,14 @@ function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
   New-Item -ItemType Directory -Force $BuildDirectory | Out-Null
 
   # get the uupdump build package
-  $Title = "$($Name) $($Iso.Edition) $($Iso.Build)"
+  $Title = "$($Name) $($Iso.Editions) $($Iso.Build)"
+
   Write-Host "Get-WindowsIso: Downloading UUP dump package for $($Title).`n"
 
   $DownloadPackageBody = @{
-    autodl = 2
-    updates = 1
-    cleanup = 1
+    'autodl' = 2
+    'updates' = 1
+    'cleanup' = 1
   }
 
   Invoke-WebRequest `
@@ -448,10 +472,12 @@ function Get-WindowsIso([string]$Name, [hashtable]$Target, $Path) {
     -Body $DownloadPackageBody `
     -OutFile "$BuildDirectory.zip" |
     Out-Null
+
+  Write-Host "Get-WindowsIso: Expanding downloaded build package $($BuildDirectory).zip.`n"
   
   # extract downloaded uupdump zip for image
   Expand-Archive `
-    -Path "$BuildDirectory.zip" `
+    -Path "$($BuildDirectory).zip" `
     -DestinationPath $BuildDirectory
 
   # populate the config file for uup build job
