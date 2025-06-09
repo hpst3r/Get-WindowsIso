@@ -397,8 +397,12 @@ Match? $($EditionsIncluded)
     # these variables will be used in ApiUris below
     $Id = $_.value.uuid
     $Editions = $Target.Editions
+    $VirtualEditions = if ([bool]($Target.ContainsKey('VirtualEditions'))) { $Target.VirtualEditions -join ',' } else { $null }
 
     Write-Host "Get-UupDumpIso: OK! Returning final ISO parameters.`n"
+
+    Write-Verbose "VirtualEditions: $($Target.VirtualEditions)"
+    Write-Verbose "VirtualEditions exist? $([bool]($Target.ContainsKey('VirtualEditions')))"
     
     # return object
     [PSCustomObject]@{
@@ -406,9 +410,9 @@ Match? $($EditionsIncluded)
       Title = $_.value.title
       Build = $_.value.build
       Id = $Id
-      Editions = $Target.Editions
+      Editions = $Editions
       # format VirtualEditions for use in ConvertConfig.ini file, like: vAutoEditions=Education,Enterprise,ServerRdsh,IoTEnterprise,IoTEnterpriseK
-      VirtualEditions = if ($Target.PSObject.Properties['VirtualEditions']) { $Target.VirtualEditions -join ',' } else { $null }
+      VirtualEditions = $VirtualEditions
       # compose queries for requested version
       ApiUri = 'https://api.uupdump.net/get.php?' + (New-QueryString @{
         'id' = $Id
@@ -524,8 +528,13 @@ function Get-WindowsIso {
     -Path "$($BuildDirectory).zip" `
     -DestinationPath $BuildDirectory
 
+  Write-Host "Get-WindowsIso: Editing ConvertConfig to set VirtualEditions $($Iso.VirtualEditions), SkipISO $($SkipISO)."
+
   # populate the ConvertConfig file for the uup converter batch script
   # https://gist.github.com/slimlime/4d943e01d89ed6f7fbc80be2c99163ab
+  # set SkipISO per arg
+  # set extra VirtualEditions in config file, if VirtualEditions present
+  # this is set by Get-UupDumpIso in returned object
   $ConvertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
     -replace '^(ForceDism\s*)=.*','$1=1' `
     -replace '^(AutoExit\s*)=.*','$1=1' `
@@ -534,8 +543,6 @@ function Get-WindowsIso {
     -replace '^(ResetBase\s*)=.*','$1=1' `
     -replace '^(SkipWinRE\s*)=.*','$1=1' `
     -replace '^(SkipISO\s*)=.*',"`$1=$([int]$SkipISO)" `
-    # set extra VirtualEditions in config file, if VirtualEditions present
-    # this is set by Get-UupDumpIso in returned object
     -replace '^(vAutoEditions=\s*)=.*', "`$1=$($Iso.VirtualEditions)"
 
   Set-Content `
@@ -604,6 +611,8 @@ try {
   $Stopwatch.Stop()
 
   Write-Host "uup-dump-get-windows-iso: Execution completed at: $(Get-Date -UFormat %s), elapsed: $($Stopwatch.Elapsed.TotalSeconds) seconds."
+
+  Pop-Location
 
   Stop-Transcript
 
