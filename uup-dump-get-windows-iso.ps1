@@ -250,7 +250,15 @@ function Invoke-UupDumpApi {
 
 }
 
-function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
+function Get-UupDumpIso {
+  param (
+    [Parameter(Mandatory=$true)]
+    [string]$Name,
+    [Parameter(Mandatory=$true)]
+    [hashtable]$Target,
+    [Parameter(Mandatory=$true)]
+    [string]$Path
+  )
 
   Write-Host "Get-UupDumpIso: Getting metadata for $($Name).`n"
 
@@ -476,8 +484,10 @@ function Get-WindowsIso {
     [string]$Name,
     [Parameter(Mandatory=$true)]
     [hashtable]$Target,
-    [Parameter()]
-    [System.Object]$Path
+    [Parameter(Mandatory=$true)]
+    [System.Object]$Path,
+    [Parameter(Mandatory=$true)]
+    [bool]$SkipISO
   )
 
   $Iso = Get-UupDumpIso -Name $Name -Target $Target
@@ -493,7 +503,7 @@ function Get-WindowsIso {
 
   # create the build directory. Cannot have spaces in the PATH, so strip them from the Name.
   $BuildDirectory = (Join-Path -Path $Path -ChildPath ($Name -replace '\s',''))
-  $DestinationIsoPath = "$($BuildDirectory).iso"
+  $DestinationIsoPath = "$($BuildDirectory)-$(Get-Date -Format 'ddMMyy')-$(Get-Date -UFormat %s).iso"
   $DestinationIsoMetadataPath = "$($DestinationIsoPath).json"
   $DestinationIsoChecksumPath = "$($DestinationIsoPath).sha256.txt"
 
@@ -564,33 +574,43 @@ function Get-WindowsIso {
 
   Pop-Location
 
-  $SourceIsoPath = Resolve-Path $BuildDirectory/*.Iso
+  if (-not $SkipISO) {
 
-  $IsoChecksum = (Get-FileHash -Algorithm SHA256 $SourceIsoPath).Hash.ToLowerInvariant()
+    $SourceIsoPath = Resolve-Path $BuildDirectory/*.Iso
 
-  Set-Content -Encoding ascii -NoNewline -Path $DestinationIsoChecksumPath -Value $IsoChecksum
+    $IsoChecksum = (Get-FileHash -Algorithm SHA256 $SourceIsoPath).Hash.ToLowerInvariant()
 
-  $WindowsImages = Get-IsoWindowsImages $SourceIsoPath
+    Set-Content -Encoding ascii -NoNewline -Path $DestinationIsoChecksumPath -Value $IsoChecksum
 
-  Set-Content -Path $DestinationIsoMetadataPath -value (
-    ([PSCustomObject]@{
-      name = $Name
-      title = $Iso.Title
-      build = $Iso.Build
-      checksum = $IsoChecksum
-      images = @($WindowsImages)
-      uupDump = @{
-        id = $Iso.Id
-        apiUri = $Iso.ApiUri
-        downloadUri = $Iso.DownloadUri
-        downloadPackageUri = $Iso.DownloadPackageUri
-      }
-    } | ConvertTo-Json -Depth 99) -replace '\\u0026','&'
-  )
+    $WindowsImages = Get-IsoWindowsImages $SourceIsoPath
 
-  Write-Host "Get-WindowsIso: Moving ISO to $($DestinationIsoPath).`n"
+    Set-Content -Path $DestinationIsoMetadataPath -value (
+      ([PSCustomObject]@{
+        name = $Name
+        title = $Iso.Title
+        build = $Iso.Build
+        checksum = $IsoChecksum
+        images = @($WindowsImages)
+        uupDump = @{
+          id = $Iso.Id
+          apiUri = $Iso.ApiUri
+          downloadUri = $Iso.DownloadUri
+          downloadPackageUri = $Iso.DownloadPackageUri
+        }
+      } | ConvertTo-Json -Depth 99) -replace '\\u0026','&'
+    )
 
-  Move-Item -Force -Path $SourceIsoPath -Destination $DestinationIsoPath
+
+    Write-Host "Get-WindowsIso: Moving ISO to $($DestinationIsoPath).`n"
+
+    Move-Item -Force -Path $SourceIsoPath -Destination $DestinationIsoPath
+
+  } else {
+
+    Write-Verbose "Get-WindowsISO: SkipISO is $([bool]$SkipISO), ISO is not made."
+    Write-Verbose "We will not perform ISO management tasks (generate checksums and move the image.)"
+
+  }
 
   Write-Host 'Get-WindowsIso: All Done.'
 
@@ -604,7 +624,7 @@ try {
 
   $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-  Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path
+  Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path -SkipISO $SkipISO
 
 } finally {
 
