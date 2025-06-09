@@ -67,7 +67,6 @@ trap {
 
 # the OS build targets available as options for the $Target parameter.
 [hashtable]$TARGETS = @{
-  # TODO: VirtualEditions is not currently being used for anything, Enterprise won't work
   'Windows 11, version 23H2' = @{
     Search = 'Windows 11, version 23H2'
     Editions = @('core','professional')
@@ -409,7 +408,7 @@ Match? $($EditionsIncluded)
 
     Write-Host "Get-UupDumpIso: OK! Returning final ISO parameters.`n"
 
-    Write-Verbose "VirtualEditions: $($Target.VirtualEditions)"
+    Write-Verbose "VirtualEditions: $($VirtualEditions)"
     Write-Verbose "VirtualEditions exist? $([bool]($Target.ContainsKey('VirtualEditions')))"
     
     # return object
@@ -490,7 +489,7 @@ function Get-WindowsIso {
     [bool]$SkipISO
   )
 
-  $Iso = Get-UupDumpIso -Name $Name -Target $Target
+  $Iso = Get-UupDumpIso -Name $Name -Target $Target -Path $Path
 
   # log iso parameters to console
   Write-Verbose 'Get-WindowsIso: Get-UupDumpIso returned object:'
@@ -528,7 +527,7 @@ function Get-WindowsIso {
     -Method Post `
     -Uri $Iso.DownloadPackageUri `
     -Body $DownloadPackageBody `
-    -OutFile "$BuildDirectory.zip" |
+    -OutFile "$($BuildDirectory).zip" |
     Out-Null
 
   Write-Host "Get-WindowsIso: Expanding downloaded build package $($BuildDirectory).zip.`n"
