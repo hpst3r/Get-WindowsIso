@@ -44,7 +44,9 @@ param(
     [string]$Version,
     # The name of the child directory to use for the uupdump build job
     [Parameter()]
-    [string]$Path='output'
+    [string]$Path='output',
+    [Parameter()]
+    [bool]$SkipISO=$false
 )
 
 Set-StrictMode -Version Latest
@@ -69,6 +71,7 @@ trap {
   'Windows 11, version 23H2' = @{
     Search = 'Windows 11, version 23H2'
     Editions = @('core','professional')
+    VirtualEditions = @('ProfessionalWorkstation','ProfessionalEducation','Education','Enterprise','ServerRdsh','IoTEnterprise','IoTEnterpriseK')
   }
   'Windows 11 Professional, version 23H2' = @{
     Search = 'Windows 11, version 23H2'
@@ -82,6 +85,7 @@ trap {
   'Windows 11, version 24H2' = @{
     Search = 'Windows 11, version 24H2'
     Editions = @('core','professional')
+    VirtualEditions = @('ProfessionalWorkstation','ProfessionalEducation','Education','Enterprise','ServerRdsh','IoTEnterprise','IoTEnterpriseK')
   }
   'Windows 11 Professional, version 24H2' = @{
     Search  = 'Windows 11, version 24H2'
@@ -91,6 +95,12 @@ trap {
     Search  = 'Windows 11, version 24H2'
     Editions = @('professional')
     VirtualEditions = @('enterprise')
+  }
+  'Windows 11, Preview 26200' = @{
+    Search = 'Windows 11 Insider Preview 10.0.26200'
+    Editions = @('core','professional')
+    VirtualEditions = @('ProfessionalWorkstation','ProfessionalEducation','Education','Enterprise','ServerRdsh','IoTEnterprise','IoTEnterpriseK')
+    Ring = 'DEV'
   }
   'Windows 11 Professional, Preview 26200' = @{
     Search = 'Windows 11 Insider Preview 10.0.26200'
@@ -397,7 +407,8 @@ Match? $($EditionsIncluded)
       Build = $_.value.build
       Id = $Id
       Editions = $Target.Editions
-      VirtualEditions = if ($Target.PSObject.Properties['VirtualEditions']) { $Target.VirtualEditions } else { $null }
+      # format VirtualEditions for use in ConvertConfig.ini file, like: vAutoEditions=Education,Enterprise,ServerRdsh,IoTEnterprise,IoTEnterpriseK
+      VirtualEditions = if ($Target.PSObject.Properties['VirtualEditions']) { $Target.VirtualEditions -join ',' } else { $null }
       # compose queries for requested version
       ApiUri = 'https://api.uupdump.net/get.php?' + (New-QueryString @{
         'id' = $Id
@@ -513,13 +524,19 @@ function Get-WindowsIso {
     -Path "$($BuildDirectory).zip" `
     -DestinationPath $BuildDirectory
 
-  # populate the config file for uup build job
+  # populate the ConvertConfig file for the uup converter batch script
+  # https://gist.github.com/slimlime/4d943e01d89ed6f7fbc80be2c99163ab
   $ConvertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
+    -replace '^(ForceDism\s*)=.*','$1=1' `
     -replace '^(AutoExit\s*)=.*','$1=1' `
     -replace '^(Cleanup\s*)=.*','$1=1' `
     -replace '^(NetFx3\s*)=.*','$1=1' `
     -replace '^(ResetBase\s*)=.*','$1=1' `
-    -replace '^(SkipWinRE\s*)=.*','$1=1'
+    -replace '^(SkipWinRE\s*)=.*','$1=1' `
+    -replace '^(SkipISO\s*)=.*',"`$1=$([int]$SkipISO)" `
+    # set extra VirtualEditions in config file, if VirtualEditions present
+    # this is set by Get-UupDumpIso in returned object
+    -replace '^(vAutoEditions=\s*)=.*', "`$1=$($Iso.VirtualEditions)"
 
   Set-Content `
     -Encoding ascii `
@@ -572,16 +589,22 @@ function Get-WindowsIso {
 
 }
 
-Start-Transcript -Path "job-$(Get-Date -UFormat %s).log"
+try {
 
-Write-Host "uup-dump-get-windows-iso: Beginning execution: version $(git rev-parse --short HEAD) at $(Get-Date -UFormat %s)."
+  Start-Transcript -Path "job-$(Get-Date -UFormat %s).log"
 
-$Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-Host "uup-dump-get-windows-iso: Beginning execution: version $(git rev-parse --short HEAD) at $(Get-Date -UFormat %s)."
 
-Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path
+  $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-$Stopwatch.Stop()
+  Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path
 
-Write-Host "uup-dump-get-windows-iso: Execution completed at: $(Get-Date -UFormat %s), elapsed: $($Stopwatch.Elapsed.TotalSeconds) seconds."
+} finally {
 
-Stop-Transcript
+  $Stopwatch.Stop()
+
+  Write-Host "uup-dump-get-windows-iso: Execution completed at: $(Get-Date -UFormat %s), elapsed: $($Stopwatch.Elapsed.TotalSeconds) seconds."
+
+  Stop-Transcript
+
+}
