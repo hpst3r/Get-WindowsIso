@@ -283,9 +283,9 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
     # verify preview state is as expected
 
-    $IsPreviewExpected = ($Target.Search -like '*preview*' -or $_.value.title -notlike '*preview*')
+    $IsPreviewExpected = ($Target.Search -like '*preview*')
 
-    if (-not $IsPreviewExpected -and $Build.value.title -like '*preview*') {
+    if (-not $IsPreviewExpected -and $Title -like '*preview*') {
       Write-Host "Get-UupDumpIso: This image is a preview, which was not requested. Skipping.`n"
       continue
     }
@@ -340,7 +340,12 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
     }
 
-    if ($BuildEditions -notcontains $Target.Editions) {
+    Write-Verbose "Get-UupDumpIso: BuildEditions: $($BuildEditions -join ', ')"
+    Write-Verbose "Get-UupDumpIso: Target.Editions: $($Target.Editions -join ', ')"
+
+    $EditionsPresent = $Target.Editions | Where-Object { $BuildEditions -contains $_ }
+
+    if (-not [bool]$EditionsPresent) {
 
       Write-Host "Get-UupDumpIso: Skipping. Build is missing target editions $($Target.Editions -join ', ').`n"
       
@@ -471,7 +476,7 @@ function Get-WindowsIso {
   # get the uupdump build package
   $Title = "$($Name) $($Iso.Editions) $($Iso.Build)"
 
-  Write-Host "Get-WindowsIso: Downloading UUP dump package for $($Title).`n"
+  Write-Host "Get-WindowsIso: Downloading UUP dump package for $($Title) (URI $($Iso.DownloadPackageUri)).`n"
 
   $DownloadPackageBody = @{
     'autodl'  = 2
@@ -479,12 +484,37 @@ function Get-WindowsIso {
     'cleanup' = 1
   }
 
-  Invoke-WebRequest `
-    -Method Post `
-    -Uri $Iso.DownloadPackageUri `
-    -Body $DownloadPackageBody `
-    -OutFile "$BuildDirectory.zip" |
-  Out-Null
+  # TODO: this works but is very lazy
+  for ($i = 0; $i -lt 15; $i++) {
+    try {
+      
+      Invoke-WebRequest `
+        -Method Post `
+        -Uri $Iso.DownloadPackageUri `
+        -Body $DownloadPackageBody `
+        -OutFile "$BuildDirectory.zip" |
+      Out-Null
+
+      $Success = $true
+      break
+
+    }
+    catch {
+
+      Write-Warning "Get-WindowsIso: API request to download package failed: $($_)."
+
+      Write-Warning "Get-WindowsIso: Waiting 10 seconds, then retrying request."
+
+      Start-Sleep -Seconds 10
+
+    }
+  }
+
+  if (-not $Success) {
+
+    throw "Get-WindowsIso: Failed to download UUP dump package."
+
+  }
 
   Write-Host "Get-WindowsIso: Expanding downloaded build package $($BuildDirectory).zip.`n"
   
@@ -559,7 +589,7 @@ function Get-WindowsIso {
 
 }
 
-Start-Transcript -Path "job-$(Get-Date -UFormat %s).log"
+Start-Transcript -Path "Get-Iso-$($Version)-$(Get-Date -UFormat %s).log"
 
 Write-Host "uup-dump-get-windows-iso: Beginning execution: version $(git rev-parse --short HEAD) at $(Get-Date -UFormat %s)."
 

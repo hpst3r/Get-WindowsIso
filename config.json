@@ -1,0 +1,14 @@
+{
+    "WorkingDirectory": "D:\\Build",
+    "OutputDirectory": "D:\\Images",
+    "Versions":
+    [
+        "Windows 11 Professional, version 23H2",
+        "Windows 11 Professional, version 24H2",
+        "Windows 11 Professional, Preview 26200",
+        "Windows Server 2022",
+        "Windows Server 2025",
+        "Windows Server 2022 Datacenter (Core)",
+        "Windows Server 2025 Datacenter (Core)"
+    ]
+}
