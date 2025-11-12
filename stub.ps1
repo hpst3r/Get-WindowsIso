@@ -1,5 +1,5 @@
-$ConfigFile = 'D:\Get-WindowsIso\config.json'
-$BuildScript = 'D:\Get-WindowsIso\uup-dump-get-windows-iso.ps1'
+$ConfigFile = 'C:\build\new\get-windowsiso\config.json'
+$BuildScript = 'C:\build\new\get-windowsiso\uup-dump-get-windows-iso.ps1'
 $Config = (Get-Content $ConfigFile | ConvertFrom-Json)
 
 Remove-Item $Config.WorkingDirectory -Force -Recurse

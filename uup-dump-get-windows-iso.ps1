@@ -18,8 +18,11 @@ Creates a Windows ISO via uupdump.
   'Windows 11 Professional, version 24H2'
   'Windows 11 Enterprise, version 24H2'
 
-  'Windows 11 Professional, Preview 26200'
-  'Windows 11 Enterprise, Preview 26200'
+  'Windows 11 Professional, version 25H2'
+  'Windows 11 Enterprise, version 25H2'
+
+  'Windows 11 Professional, Preview 26220'
+  'Windows 11 Enterprise, Preview 26220'
 
   'Windows Server 2025'
   'Windows Server 2025 Datacenter'
@@ -73,6 +76,7 @@ trap {
 # To add a new option, you can test a search string on the uupdump.net main site's search page.
 # Each target has a search string to be fed to the API, desired editions,
 # and optionally virtual editions (e.g., Enterprise, Education, IoT) and ring (DEV, WIF, RETAIL, etc).
+# TODO: retire Enterprise build. Switch editions after installing Pro if you want it.
 
 [hashtable]$TARGETS = @{
 
@@ -102,13 +106,27 @@ trap {
     Editions        = @('professional')
     VirtualEditions = @('enterprise')
   }
-  'Windows 11 Professional, Preview 26200' = @{
-    Search   = 'Windows 11 Insider Preview 10.0.26200'
+  'Windows 11, version 25H2'               = @{
+    Search          = 'Windows 11, version 25H2'
+    Editions        = @('core', 'professional')
+  }
+  'Windows 11 Professional, version 25H2'  = @{
+    Search   = 'Windows 11, version 25H2'
+    Editions = @('professional')
+  }
+  'Windows 11 Enterprise, version 25H2'    = @{
+    Search          = 'Windows 11, version 25H2'
+    Editions        = @('professional')
+    VirtualEditions = @('enterprise')
+  }
+
+  'Windows 11 Professional, Preview 26220' = @{
+    Search   = 'Windows 11 Insider Preview 10.0.26220'
     Editions = @('professional')
     Ring     = 'DEV'
   }
-  'Windows 11 Enterprise, Preview 26200'   = @{
-    Search          = 'Windows 11 Insider Preview 10.0.26200'
+  'Windows 11 Enterprise, Preview 26220'   = @{
+    Search          = 'Windows 11 Insider Preview 10.0.26220'
     Editions        = @('professional')
     VirtualEditions = @('enterprise')
     Ring            = 'DEV'
@@ -528,7 +546,7 @@ function Get-WindowsIso {
     -replace '^(AutoExit\s*)=.*', '$1=1' `
     -replace '^(Cleanup\s*)=.*', '$1=1' `
     -replace '^(NetFx3\s*)=.*', '$1=1' `
-    -replace '^(ResetBase\s*)=.*', '$1=1' `
+    -replace '^(ResetBase\s*)=.*', '$1=0' ` # this will break update integration
     -replace '^(SkipWinRE\s*)=.*', '$1=1'
 
   Set-Content `
