@@ -20,7 +20,7 @@ Add-LocalGroupMember -Group "Administrators" -Member $Username -ErrorAction Sile
 # remove SeInteractiveLogonRight
 # use mmc, scripting this is a pain
 
-$Args = @(
+$TaskParameters = @(
     '/Create',
     '/TN', 'WeeklyImageUpdate',
     '/RU', $Username,
@@ -32,4 +32,4 @@ $Args = @(
     '/TR', '"powershell.exe -ExecutionPolicy Bypass -File D:\Get-WindowsIso\stub.ps1"'
 )
 
-Start-Process -FilePath 'schtasks.exe' -ArgumentList $Args -Wait -NoNewWindow
+Start-Process -FilePath 'schtasks.exe' -ArgumentList $TaskParameters -Wait -NoNewWindow

@@ -1,3 +1,7 @@
+param (
+  [switch]$NoNewWindow
+)
+
 $ConfigFile = 'C:\build\new\get-windowsiso\config.json'
 $BuildScript = 'C:\build\new\get-windowsiso\uup-dump-get-windows-iso.ps1'
 $Config = (Get-Content $ConfigFile | ConvertFrom-Json)
@@ -12,7 +16,8 @@ $Processes = foreach ($WindowsVersion in $Config.Versions) {
   Start-Process `
     -FilePath 'powershell.exe' `
     -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $BuildScript, "-Version", "`"$WindowsVersion`"", "-Path", "`"$($Config.WorkingDirectory)`"", "-Verbose" `
-    -PassThru
+    -PassThru `
+    -NoNewWindow:$NoNewWindow
 
   Write-Host "stub: Waiting 60 seconds to avoid API rate limit."
 

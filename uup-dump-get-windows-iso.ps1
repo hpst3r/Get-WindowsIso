@@ -542,11 +542,12 @@ function Get-WindowsIso {
     -DestinationPath $BuildDirectory
 
   # populate the config file for uupdump build job
+  # ResetBase=1 will break update integration
   $ConvertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
     -replace '^(AutoExit\s*)=.*', '$1=1' `
     -replace '^(Cleanup\s*)=.*', '$1=1' `
     -replace '^(NetFx3\s*)=.*', '$1=1' `
-    -replace '^(ResetBase\s*)=.*', '$1=0' ` # this will break update integration
+    -replace '^(ResetBase\s*)=.*', '$1=0' `
     -replace '^(SkipWinRE\s*)=.*', '$1=1'
 
   Set-Content `
