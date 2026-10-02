@@ -1,35 +1,19 @@
-$Username = "ImageWorker"
-$Password = "UseAStrongPasswordHere123!"
-$UserDesc = "Local account for scheduled DISM task"
+#Requires -Version 5.1 -RunAsAdministrator
 
-# create user
-if (-not (Get-LocalUser -Name $Username -ErrorAction SilentlyContinue)) {
-    New-LocalUser `
-        -Name $Username `
-        -Password ($Password | ConvertTo-SecureString -AsPlainText -Force) `
-        -FullName "Image Task User" `
-        -Description $UserDesc `
-        -PasswordNeverExpires:$true
-    Write-Host "Created user '$Username'"
-} else {
-    Write-Host "User '$Username' already exists"
-}
-Add-LocalGroupMember -Group "Administrators" -Member $Username -ErrorAction SilentlyContinue
+# Registers stub.ps1 as a weekly scheduled task running as SYSTEM (no stored password).
+# If you also use Customize-WindowsIso, use its register-task.ps1 instead: it runs
+# this stub and the customization runner in sequence as one task.
 
-# grant SeBatchLogonRight (log on as batch job)
-# remove SeInteractiveLogonRight
-# use mmc, scripting this is a pain
+$ErrorActionPreference = 'Stop'
 
-$TaskParameters = @(
-    '/Create',
-    '/TN', 'WeeklyImageUpdate',
-    '/RU', $Username,
-    '/RP', $Password,
-    '/SC', 'WEEKLY',
-    '/D', 'WED',
-    '/ST', '00:00',
-    '/RL', 'HIGHEST',
-    '/TR', '"powershell.exe -ExecutionPolicy Bypass -File D:\Get-WindowsIso\stub.ps1"'
-)
+$PowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$Stub = Join-Path $PSScriptRoot 'stub.ps1'
 
-Start-Process -FilePath 'schtasks.exe' -ArgumentList $TaskParameters -Wait -NoNewWindow
+$Action = New-ScheduledTaskAction -Execute $PowerShell `
+  -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Stub`"" `
+  -WorkingDirectory $PSScriptRoot
+$Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Wednesday -At '00:00'
+$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 16) -MultipleInstances IgnoreNew -StartWhenAvailable
+$Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+Register-ScheduledTask -TaskName 'WeeklyImageUpdate' -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Force
