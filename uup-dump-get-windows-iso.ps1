@@ -21,6 +21,12 @@ Creates a Windows ISO via uupdump.
   'Windows 11 Professional, version 25H2'
   'Windows 11 Enterprise, version 25H2'
 
+  'Windows 11 Professional, version 26H2'
+  'Windows 11 Enterprise, version 26H2'
+
+  'Windows 11 Professional, Insider Preview 29xxx' (latest 29xxx build)
+  'Windows 11 Enterprise, Insider Preview 29xxx'
+
   'Windows 11 Professional, Preview 26220'
   'Windows 11 Enterprise, Preview 26220'
 
@@ -53,7 +59,14 @@ param(
   [string]$Version,
   # The name of the child directory to use for the uupdump build job
   [Parameter()]
-  [string]$Path = 'output'
+  [string]$Path = 'output',
+  # Where finished ISOs are published. If the ISO there is already the latest
+  # build (same uupdump id), the download and conversion are skipped.
+  [Parameter()]
+  [string]$PublishedDirectory,
+  # Rebuild even if the published ISO is already the latest build
+  [Parameter()]
+  [switch]$Force
 )
 
 Set-StrictMode -Version Latest
@@ -116,6 +129,31 @@ trap {
   }
   'Windows 11 Enterprise, version 25H2'    = @{
     Search          = 'Windows 11, version 25H2'
+    Editions        = @('professional')
+    VirtualEditions = @('enterprise')
+  }
+  'Windows 11, version 26H2'               = @{
+    Search   = 'Windows 11, version 26H2'
+    Editions = @('core', 'professional')
+  }
+  'Windows 11 Professional, version 26H2'  = @{
+    Search   = 'Windows 11, version 26H2'
+    Editions = @('professional')
+  }
+  'Windows 11 Enterprise, version 26H2'    = @{
+    Search          = 'Windows 11, version 26H2'
+    Editions        = @('professional')
+    VirtualEditions = @('enterprise')
+  }
+
+  # latest 29xxx (rs_prerelease) Insider build. uupdump lists newest first,
+  # so this follows the branch as new builds are published.
+  'Windows 11 Professional, Insider Preview 29xxx' = @{
+    Search   = 'Windows 11 Insider Preview 29'
+    Editions = @('professional')
+  }
+  'Windows 11 Enterprise, Insider Preview 29xxx'   = @{
+    Search          = 'Windows 11 Insider Preview 29'
     Editions        = @('professional')
     VirtualEditions = @('enterprise')
   }
@@ -297,7 +335,13 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
     $Title = $Build.value.title
     $BuildNumber = $Build.value.build
 
-    Write-Host "Get-UupDumpIso: Found build: $($Title) ($($Id)), build $($BuildNumber)`n"
+    Write-Host "Get-UupDumpIso: Found build: $($Title) ($($Id)), build $($BuildNumber), arch $($Build.value.arch)`n"
+
+    # client searches return amd64 and arm64 builds interleaved - only take amd64
+    if ($Build.value.arch -ne 'amd64') {
+      Write-Host "Get-UupDumpIso: Skipping. Architecture is $($Build.value.arch), not amd64.`n"
+      continue
+    }
 
     # verify preview state is as expected
 
@@ -465,7 +509,11 @@ function Get-WindowsIso {
     [Parameter(Mandatory = $true)]
     [hashtable]$Target,
     [Parameter()]
-    [System.Object]$Path
+    [System.Object]$Path,
+    [Parameter()]
+    [string]$PublishedDirectory,
+    [Parameter()]
+    [switch]$Force
   )
 
   $Iso = Get-UupDumpIso -Name $Name -Target $Target
@@ -477,6 +525,19 @@ function Get-WindowsIso {
 
   if ($Iso.Build -notmatch '^\d+\.\d+$') {
     throw "Get-WindowsIso: unexpected $($Name) build: $($Iso.Build)"
+  }
+
+  # skip the multi-GB download and conversion if the published ISO is already this build
+  if ($PublishedDirectory -and -not $Force) {
+    $PublishedIso = Join-Path -Path $PublishedDirectory -ChildPath "$($Name -replace '\s', '').iso"
+    if ((Test-Path $PublishedIso) -and (Test-Path "$($PublishedIso).json")) {
+      $Published = Get-Content -Raw "$($PublishedIso).json" | ConvertFrom-Json
+      if ($Published.uupDump.id -eq $Iso.Id) {
+        Write-Host "Get-WindowsIso: $($PublishedIso) is already build $($Iso.Build) ($($Iso.Id)). Nothing to do."
+        return
+      }
+      Write-Host "Get-WindowsIso: published ISO is build $($Published.build); $($Iso.Build) is available. Rebuilding."
+    }
   }
 
   # create the build directory. Cannot have spaces in the PATH, so strip them from the Name.
@@ -543,12 +604,14 @@ function Get-WindowsIso {
 
   # populate the config file for uupdump build job
   # ResetBase=1 will break update integration
+  # SkipWinRE=0 keeps a WinRE that matches this build (and gets the SafeOS update)
+  # instead of relying on a single static Winre.wim for every OS version
   $ConvertConfig = (Get-Content $BuildDirectory/ConvertConfig.ini) `
     -replace '^(AutoExit\s*)=.*', '$1=1' `
     -replace '^(Cleanup\s*)=.*', '$1=1' `
     -replace '^(NetFx3\s*)=.*', '$1=1' `
     -replace '^(ResetBase\s*)=.*', '$1=0' `
-    -replace '^(SkipWinRE\s*)=.*', '$1=1'
+    -replace '^(SkipWinRE\s*)=.*', '$1=0'
 
   Set-Content `
     -Encoding ascii `
@@ -561,11 +624,28 @@ function Get-WindowsIso {
 
   Write-Host "Get-WindowsIso: Handing off to uup_download_windows.cmd.`n"
   
-  # run uupdump download/build inline
-  powershell cmd /c uup_download_windows.cmd | Out-String -Stream
+  # uupdump's scripts call each other by bare name (e.g. 'call convert-UUP.cmd'),
+  # which fails if cmd.exe has been told not to search the current directory
+  $env:NoDefaultCurrentDirectoryInExePath = $null
 
-  if ($LASTEXITCODE) {
-    throw "Get-WindowsIso: uup_download_windows.cmd failed with exit code $($LASTEXITCODE)!"
+  # run uupdump download/build inline. stdin comes from NUL so the 'pause' calls in
+  # uupdump's error paths return immediately instead of hanging a scheduled task forever.
+  # Output goes straight to its own log (written live, unlike the transcript when
+  # running hidden as a scheduled task); the tail is copied to the transcript after.
+  $ConvertLog = Join-Path $script:LogDirectory.FullName "Convert-$($Name -replace '[^\w.-]', '')-$(Get-Date -Format yyyyMMdd-HHmmss).log"
+  Write-Host "Get-WindowsIso: converter output: $($ConvertLog)"
+
+  cmd.exe /d /c "uup_download_windows.cmd <NUL >`"$ConvertLog`" 2>&1"
+  $ConvertExitCode = $LASTEXITCODE
+
+  # drop aria2 progress lines, keep what the converter said at the end
+  (Get-Content $ConvertLog -ErrorAction SilentlyContinue) -split '\r' |
+    Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*\[(#|DL:)' } |
+    Select-Object -Last 40 |
+    Write-Host
+
+  if ($ConvertExitCode) {
+    throw "Get-WindowsIso: uup_download_windows.cmd failed with exit code $($ConvertExitCode)!"
   }
 
   Pop-Location
@@ -608,13 +688,21 @@ function Get-WindowsIso {
 
 }
 
-Start-Transcript -Path "Get-Iso-$($Version)-$(Get-Date -UFormat %s).log"
+# log next to the script, not the current directory (System32 when run as a scheduled task)
+$LogDirectory = New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'logs')
+Start-Transcript -Path (Join-Path $LogDirectory "Get-Iso-$($Version -replace '[^\w.-]', '')-$(Get-Date -Format yyyyMMdd-HHmmss).log")
 
-Write-Host "uup-dump-get-windows-iso: Beginning execution: version $(git rev-parse --short HEAD) at $(Get-Date -UFormat %s)."
+# safe.directory: the repo is owned by another account when this runs as SYSTEM
+$GitVersion = try { git -c safe.directory='*' -C $PSScriptRoot rev-parse --short HEAD 2>$null } catch { 'unknown' }
+Write-Host "uup-dump-get-windows-iso: Beginning execution: version $($GitVersion) at $(Get-Date -UFormat %s)."
+
+if (-not $TARGETS.ContainsKey($Version)) {
+  throw "uup-dump-get-windows-iso: Unknown version '$($Version)'. Valid: $($TARGETS.Keys -join '; ')"
+}
 
 $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path
+Get-WindowsIso -Name $Version -Target $TARGETS[$Version] -Path $Path -PublishedDirectory $PublishedDirectory -Force:$Force
 
 $Stopwatch.Stop()
 
