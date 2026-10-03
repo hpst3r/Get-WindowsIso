@@ -76,6 +76,12 @@ The `-Version` parameter requires a target Windows edition, one of:
 Logs are written to `logs\` next to the scripts: `stub-*.log`, `Get-Iso-*.log` per version,
 and `Convert-*.log` with the raw uupdump download/converter output (written live).
 
+Each run also writes a machine-readable summary, `logs\last-run-stub.json` (plus a
+`stub-<timestamp>.json` copy beside the transcript): start/end time, exit code, log file,
+and per version the status (`Published`, `UpToDate`, `Failed`), minutes, the published
+build and, for a new build, the build it replaced. Customize-WindowsIso's
+`Send-BuildNotification.ps1` reads it.
+
 To run it weekly, see `scheduled-task.ps1`. If you also use
 [Customize-WindowsIso](https://github.com/hpst3r/Customize-WindowsIso), use its
 `register-task.ps1` instead: one task runs both stages in order.
