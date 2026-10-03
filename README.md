@@ -47,6 +47,8 @@ The `-Version` parameter requires a target Windows edition, one of:
 - 'Windows 11 Enterprise, version 26H2'
 - 'Windows 11 Professional, Insider Preview 29xxx' (always the latest 29xxx Insider build)
 - 'Windows 11 Enterprise, Insider Preview 29xxx'
+- 'Windows 11 Professional, Preview 26220' (latest 26220 build; the search string pins the build)
+- 'Windows 11 Enterprise, Preview 26220'
 - 'Windows Server 2025'
 - 'Windows Server 2025 Datacenter'
 - 'Windows Server 2025 Datacenter (Core)'

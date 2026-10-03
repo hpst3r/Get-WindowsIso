@@ -89,7 +89,9 @@ trap {
 # the OS build targets available as options for the $Target parameter.
 # To add a new option, you can test a search string on the uupdump.net main site's search page.
 # Each target has a search string to be fed to the API, desired editions,
-# and optionally virtual editions (e.g., Enterprise, Education, IoT) and ring (DEV, WIF, RETAIL, etc).
+# and optionally virtual editions (e.g., Enterprise, Education, IoT).
+# There is no ring filter: uupdump's listid no longer reports a ring, so the
+# search string has to pin the build (e.g. 'Windows 11 Insider Preview 10.0.26220').
 # TODO: retire Enterprise build. Switch editions after installing Pro if you want it.
 
 [hashtable]$TARGETS = @{
@@ -162,13 +164,11 @@ trap {
   'Windows 11 Professional, Preview 26220' = @{
     Search   = 'Windows 11 Insider Preview 10.0.26220'
     Editions = @('professional')
-    Ring     = 'DEV'
   }
   'Windows 11 Enterprise, Preview 26220'   = @{
     Search          = 'Windows 11 Insider Preview 10.0.26220'
     Editions        = @('professional')
     VirtualEditions = @('enterprise')
-    Ring            = 'DEV'
   }
   'Windows Server 2025'                    = @{
     Search   = 'Windows Server 2025'
@@ -391,9 +391,9 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
     # for comparison, extract an array of available edition names in lower case
     $BuildEditions = $EditionResult.Response.editionFancyNames.PSObject.Properties.Name | ForEach-Object { $_.ToLowerInvariant() }
 
-    Write-Host "Get-UupDumpIso: Verifying ring, langs and editions.`n"
+    Write-Host "Get-UupDumpIso: Verifying langs and editions.`n"
 
-    # if the build is missing the desired language, edition, or ring, skip it
+    # if the build is missing the desired language or edition, skip it
 
     if ($Languages -notcontains 'en-us') {
 
@@ -416,21 +416,7 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
     }
 
-    if ($Target.PSObject.Properties['Ring']) {
-
-      if ($Build.value.ring -ne $Target.Ring) {
-
-        Write-Host "Get-UupDumpIso: Skipping. Expected ring $($Target.Ring). Got $($Build.value.ring).`n"
-        
-        continue
-
-      }
-
-      Write-Host "Get-UupDumpIso: Ring is OK! Continuing.`n"
-
-    }
-
-    Write-Host "Get-UupDumpIso: Ring, langs, and editions are OK! Continuing.`n"
+    Write-Host "Get-UupDumpIso: Langs and editions are OK! Continuing.`n"
 
     # return a PSCustomObject with the matching build's metadata and download URIs
 
@@ -461,7 +447,7 @@ function Get-UupDumpIso([string]$Name, [hashtable]$Target) {
 
   }
 
-  throw "Get-UupDumpIso: Failed to find a suitable build for $($Name) with search $($Target.Search), editions $($Target.Editions -join ', '), and ring $($Target.Ring)."
+  throw "Get-UupDumpIso: Failed to find a suitable build for $($Name) with search $($Target.Search) and editions $($Target.Editions -join ', ')."
 
 }
 
