@@ -66,8 +66,11 @@ The `-Version` parameter requires a target Windows edition, one of:
 - Builds run **one at a time** (`MaxParallel`, default 1). uupdump's converter always mounts
   at `<drive>:\MountUUP` and uses `<drive>:\W10UIuup` as scratch, so parallel conversions on
   the same drive corrupt each other.
-- A version whose published ISO is already the latest build (same uupdump id) is skipped
-  without downloading anything. Pass `-Force` to rebuild anyway.
+- A version whose published ISO is already the latest build (same uupdump id in its
+  `.iso.json`) is skipped without downloading anything. Only the `.iso.json` is needed, so this
+  still works after Customize-WindowsIso has deleted the ISO itself (`DeleteSourceAfterBuild`).
+  Pass `-Force` to rebuild anyway, and `-Version` to build only some versions, e.g.
+  `.\stub.ps1 -Force -Version 'Windows Server 2022'` to download again an ISO that was deleted.
 - Only builds that exit successfully are published, so a failed build never replaces the
   previous ISO. A build running longer than `TimeoutHoursPerVersion` (default 4) is killed.
 - Stale converter mounts from a killed run are cleaned up at the start of the next one.

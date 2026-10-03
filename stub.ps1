@@ -10,7 +10,9 @@ at <drive>:\MountUUP and uses <drive>:\W10UIuup as scratch, so two conversions
 on the same drive corrupt each other. Only raise MaxParallel if each build has
 its own drive. Launches are at least 60 seconds apart to stay under the
 uupdump API rate limit. A version whose published ISO is already the latest
-build is skipped without downloading anything.
+build (per its .iso.json, even if the ISO itself was deleted) is skipped
+without downloading anything; -Force rebuilds anyway, and -Version limits the
+run to some versions.
 
 Only versions whose build exits 0 are published, so a failed build never
 replaces last week's good ISO. Exit code is 0 if every version succeeded.
@@ -21,7 +23,10 @@ logs\stub-<timestamp>.json beside the transcript) for notifications.
 param (
   [switch]$NoNewWindow,
   [string]$ConfigFile = (Join-Path $PSScriptRoot 'config.json'),
-  [switch]$Force
+  [switch]$Force,
+  # build only these versions instead of every one in the config file,
+  # e.g. -Force -Version 'Windows Server 2022' to re-download one whose ISO was deleted
+  [string[]]$Version
 )
 
 Set-StrictMode -Version Latest
@@ -112,7 +117,8 @@ try {
   if (Test-Path $Config.WorkingDirectory) { Remove-Item $Config.WorkingDirectory -Force -Recurse }
   New-Item -ItemType Directory -Force -Path $Config.WorkingDirectory, $Config.OutputDirectory | Out-Null
 
-  $Pending = [System.Collections.Generic.Queue[string]]::new([string[]]@($Config.Versions))
+  $Versions = if ($Version) { $Version } else { @($Config.Versions) }
+  $Pending = [System.Collections.Generic.Queue[string]]::new([string[]]@($Versions))
   $Running = [System.Collections.Generic.List[object]]::new()
   $LastLaunch = [DateTime]::MinValue
 
@@ -145,13 +151,13 @@ try {
     }
 
     if ($Pending.Count -and $Running.Count -lt $MaxParallel -and ((Get-Date) - $LastLaunch) -ge $LaunchInterval) {
-      $Version = $Pending.Dequeue()
-      Write-Host "stub: starting $($Version)."
+      $Next = $Pending.Dequeue()
+      Write-Host "stub: starting $($Next)."
 
       $Arguments = @(
         '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
         '-File', "`"$BuildScript`"",
-        '-Version', "`"$Version`"",
+        '-Version', "`"$Next`"",
         '-Path', "`"$($Config.WorkingDirectory)`"",
         '-PublishedDirectory', "`"$($Config.OutputDirectory)`""
       )
@@ -168,7 +174,7 @@ try {
       # handle was opened while it was running; without this ExitCode is $null
       $null = $Process.Handle
 
-      $Running.Add([PSCustomObject]@{ Version = $Version; Process = $Process; Started = Get-Date })
+      $Running.Add([PSCustomObject]@{ Version = $Next; Process = $Process; Started = Get-Date })
       $LastLaunch = Get-Date
       continue
     }

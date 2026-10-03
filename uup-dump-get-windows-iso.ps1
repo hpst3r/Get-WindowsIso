@@ -60,8 +60,9 @@ param(
   # The name of the child directory to use for the uupdump build job
   [Parameter()]
   [string]$Path = 'output',
-  # Where finished ISOs are published. If the ISO there is already the latest
-  # build (same uupdump id), the download and conversion are skipped.
+  # Where finished ISOs are published. If the <name>.iso.json there says it is
+  # already the latest build (same uupdump id), the download and conversion are
+  # skipped, whether or not the ISO itself is still there.
   [Parameter()]
   [string]$PublishedDirectory,
   # Rebuild even if the published ISO is already the latest build
@@ -527,13 +528,16 @@ function Get-WindowsIso {
     throw "Get-WindowsIso: unexpected $($Name) build: $($Iso.Build)"
   }
 
-  # skip the multi-GB download and conversion if the published ISO is already this build
+  # skip the multi-GB download and conversion if the published ISO is already this build.
+  # Only its .iso.json is needed: Customize-WindowsIso can delete the ISO itself once it has
+  # been customized (DeleteSourceAfterBuild) and keeps the .iso.json and .sha256.txt.
   if ($PublishedDirectory -and -not $Force) {
     $PublishedIso = Join-Path -Path $PublishedDirectory -ChildPath "$($Name -replace '\s', '').iso"
-    if ((Test-Path $PublishedIso) -and (Test-Path "$($PublishedIso).json")) {
+    if (Test-Path "$($PublishedIso).json") {
       $Published = Get-Content -Raw "$($PublishedIso).json" | ConvertFrom-Json
       if ($Published.uupDump.id -eq $Iso.Id) {
-        Write-Host "Get-WindowsIso: $($PublishedIso) is already build $($Iso.Build) ($($Iso.Id)). Nothing to do."
+        $Deleted = if (Test-Path $PublishedIso) { '' } else { ' (the ISO itself was deleted after customizing)' }
+        Write-Host "Get-WindowsIso: $($PublishedIso) is already build $($Iso.Build) ($($Iso.Id))$Deleted. Nothing to do. Use -Force to rebuild it."
         return
       }
       Write-Host "Get-WindowsIso: published ISO is build $($Published.build); $($Iso.Build) is available. Rebuilding."
