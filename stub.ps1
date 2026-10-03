@@ -103,13 +103,17 @@ try {
   # mounts at <drive>:\MountUUP (drive of the build directory), not under it.
   $Drive = Split-Path -Qualifier (New-Item -ItemType Directory -Force -Path $Config.WorkingDirectory).FullName
   $ConverterMount = "$Drive\MountUUP"
+  $Foreign = 0
   foreach ($Image in @(Get-WindowsImage -Mounted)) {
     if ($Image.Path -like "$($Config.WorkingDirectory)*" -or $Image.Path -eq $ConverterMount -or $Image.ImagePath -like "$($Config.WorkingDirectory)*") {
       Write-Host "stub: discarding stale mount $($Image.Path) ($($Image.ImagePath))."
       Dismount-WindowsImage -Path $Image.Path -Discard -ErrorAction Continue | Out-Null
     }
+    else { $Foreign++ }
   }
-  Clear-WindowsCorruptMountPoint | Out-Null
+  # machine-wide: it can remove the mount record of another build that is mid-commit
+  if ($Foreign) { Write-Host "stub: $Foreign other image(s) mounted on this machine; skipping Clear-WindowsCorruptMountPoint." }
+  else { Clear-WindowsCorruptMountPoint | Out-Null }
   foreach ($Path in $ConverterMount, "$Drive\W10UIuup") {
     if (Test-Path $Path) { Remove-Item $Path -Recurse -Force -ErrorAction Continue }
   }
