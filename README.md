@@ -47,6 +47,8 @@ The `-Version` parameter requires a target Windows edition, one of:
 - 'Windows 11 Enterprise, version 26H2'
 - 'Windows 11 Professional, Insider Preview 29xxx' (always the latest 29xxx Insider build)
 - 'Windows 11 Enterprise, Insider Preview 29xxx'
+- 'Windows 11 Professional, Preview 26220' (latest 26220 build; the search string pins the build)
+- 'Windows 11 Enterprise, Preview 26220'
 - 'Windows Server 2025'
 - 'Windows Server 2025 Datacenter'
 - 'Windows Server 2025 Datacenter (Core)'
@@ -66,8 +68,11 @@ The `-Version` parameter requires a target Windows edition, one of:
 - Builds run **one at a time** (`MaxParallel`, default 1). uupdump's converter always mounts
   at `<drive>:\MountUUP` and uses `<drive>:\W10UIuup` as scratch, so parallel conversions on
   the same drive corrupt each other.
-- A version whose published ISO is already the latest build (same uupdump id) is skipped
-  without downloading anything. Pass `-Force` to rebuild anyway.
+- A version whose published ISO is already the latest build (same uupdump id in its
+  `.iso.json`) is skipped without downloading anything. Only the `.iso.json` is needed, so this
+  still works after Customize-WindowsIso has deleted the ISO itself (`DeleteSourceAfterBuild`).
+  Pass `-Force` to rebuild anyway, and `-Version` to build only some versions, e.g.
+  `.\stub.ps1 -Force -Version 'Windows Server 2022'` to download again an ISO that was deleted.
 - Only builds that exit successfully are published, so a failed build never replaces the
   previous ISO. A build running longer than `TimeoutHoursPerVersion` (default 4) is killed.
 - Stale converter mounts from a killed run are cleaned up at the start of the next one.
@@ -75,6 +80,12 @@ The `-Version` parameter requires a target Windows edition, one of:
 
 Logs are written to `logs\` next to the scripts: `stub-*.log`, `Get-Iso-*.log` per version,
 and `Convert-*.log` with the raw uupdump download/converter output (written live).
+
+Each run also writes a machine-readable summary, `logs\last-run-stub.json` (plus a
+`stub-<timestamp>.json` copy beside the transcript): start/end time, exit code, log file,
+and per version the status (`Published`, `UpToDate`, `Failed`), minutes, the published
+build and, for a new build, the build it replaced. Customize-WindowsIso's
+`Send-BuildNotification.ps1` reads it.
 
 To run it weekly, see `scheduled-task.ps1`. If you also use
 [Customize-WindowsIso](https://github.com/hpst3r/Customize-WindowsIso), use its
